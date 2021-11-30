@@ -17,6 +17,74 @@
  * https://github.com/0xdea/frida-scripts/
  */
 
+var Util = {};
+Util.console = {
+
+	// We try to be sensible of how much data we want to log here. Only the first
+	// level of an Object or Array is parsed. All subsequent levels are ommited.
+	// Arrays are shortened to the first 32 entries.
+	// To log an Object and traverse all levels, use console.logJSON()
+	_arrayMaxLength: 32,
+	
+	_toString: function(obj, deep) {
+		if( deep ) {
+			return JSON.stringify(obj);
+		}
+		else if( obj instanceof Array || ArrayBuffer.isView(obj) ) {
+			var s = '',
+				length = Math.min(obj.length, Util.console._arrayMaxLength),
+				omitted = obj.length - length;
+			for( var i = 0; i < length; i++ ) {
+				s += (i === 0 ? '' : ', ') + Util.console._toStringFlat(obj[i]);
+			}
+			return '[' + s + (omitted ? ', ...'+omitted+' more]' : ']');
+		}
+		else {
+			var s = '',
+				first = true;
+			for( var i in obj ) {
+				s += (first ? '' : ', ') + i + ': ' + Util.console._toStringFlat(obj[i]);
+				first = false;
+			}
+			return '{'+s+'}';
+		}
+	},
+	
+	_toStringFlat: function(obj) {
+		if( typeof(obj) === 'function' ) {
+			return '[Function]';
+		}
+		else if( obj instanceof Array || ArrayBuffer.isView(obj) ) {
+			return '[Array '+obj.length+']';
+		}
+		else {
+			return obj;
+		}
+	},
+	
+	_log: function(level, args, deep) {
+		var s = level + ':';
+		for (var i = 0; i < args.length; i++) {
+			var arg = args[i];
+			s += ' ' + (!arg || typeof(arg) !== 'object'
+				? arg
+				: Util.console._toString(arg, deep));
+		}
+		console.log( s );
+	},
+	
+	assert: function() {
+		var args = Array.prototype.slice.call(arguments);
+		var assertion = args.shift();
+		if( !assertion ) {
+			console.log( 'Assertion failed: ' + args.join(', ') );
+		}
+	}
+};
+
+Util.log = function () { Util.console._log('LOG', arguments); };
+Util.logJSON = function() {Util.console._log('JSON', arguments, true)};
+
 // enumerate all Java classes
 function enumAllClasses()
 {
@@ -60,6 +128,22 @@ function enumMethods(targetClass)
 	hook.$dispose;
 
 	return ownMethods;
+}
+
+// get ApplicationContext
+function getApplicationContext() {
+	const ActivityThread = Java.use("android.app.ActivityThread");
+	const currentApplication = ActivityThread.currentApplication();
+
+	var ret = currentApplication.getApplicationContext();
+	return ret;
+}
+
+function getPackageInfo() {
+	const context = getApplicationContext();
+	const packageInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+	Util.log(packageInfo);
+	return packageInfo;
 }
 
 /*
